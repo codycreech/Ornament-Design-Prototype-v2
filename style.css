@@ -78,6 +78,23 @@ button:active { transform: translateY(1px); }
 }
 canvas { display: block; touch-action: none; }
 
+/* Persistent reminder that painted work isn't saved yet (see shared.js'
+   isDirty/beforeunload guard). Fixed to the top so it stays visible no
+   matter how the grid/sphere panels scroll. */
+#unsavedBanner {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1200;
+  background: #f2b73c;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+}
+#unsavedBanner[hidden] { display: none; }
+
 /* Prevent iOS text-selection / callout popups from interrupting painting */
 #gridMount, #sphereMount {
   -webkit-user-select: none;

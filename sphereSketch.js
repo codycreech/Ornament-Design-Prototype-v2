@@ -13,9 +13,6 @@ new p5((p) => {
   const H = window.SharedHelpers;
 
   const R = 180;
-  const ROT_STEP = 0.05;
-  let rotX = 0;
-  let rotY = 0;
 
   let hoveredId = null;
   let hoveredPos = null;
@@ -156,17 +153,8 @@ new p5((p) => {
   p.draw = () => {
     p.background(15);
 
-    // Orbit + zoom
+    // Orbit + zoom (mouse/touch drag only — keyboard rotation removed)
     p.orbitControl(1, 1, 0.25);
-
-    // Reversed keyboard rotation
-    if (p.keyIsDown(p.LEFT_ARROW) || p.keyIsDown(65)) rotY += ROT_STEP;
-    if (p.keyIsDown(p.RIGHT_ARROW) || p.keyIsDown(68)) rotY -= ROT_STEP;
-    if (p.keyIsDown(p.UP_ARROW) || p.keyIsDown(87)) rotX += ROT_STEP;
-    if (p.keyIsDown(p.DOWN_ARROW) || p.keyIsDown(83)) rotX -= ROT_STEP;
-
-    p.rotateX(rotX);
-    p.rotateY(rotY);
 
     // Keep lon=0 centered (matches the grid pairing intuition)
     p.rotateY(-p.HALF_PI);

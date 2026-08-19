@@ -46,9 +46,12 @@ new p5((p) => {
   const SUBCELL_N = (S.NUM_LATITUDE - 1) * S.GRID_COUNT * (2 * S.SUBCELLS_PER_LEG); // 2400
   const SUBCELL_BASE = ANCHOR_N;
 
+  let canvasEl = null;
+
   p.setup = () => {
     const c = p.createCanvas(200, 200);
     c.parent("gridMount");
+    canvasEl = c.elt;
 
     const mount = p.select("#gridMount");
     p.pixelDensity(1);
@@ -81,15 +84,27 @@ new p5((p) => {
       S.hoverGrid = null;
     }
 
+    if (canvasEl) canvasEl.style.cursor = S.eyedropperActive ? "crosshair" : "";
+
     drawGrid();
-    drawBrushHoverPreview();
+    if (S.eyedropperActive) {
+      drawEyedropperHoverPreview();
+    } else {
+      drawBrushHoverPreview();
+    }
     if (staticOverlay) p.image(staticOverlay, 0, 0);
   };
 
   p.mousePressed = () => {
+    if (!inCanvasBounds(p.mouseX, p.mouseY)) return;
+    // The eyedropper works even while painting is toggled off — it only
+    // reads a color, it doesn't touch the artwork.
+    if (trySampleEyedropper(p.mouseX, p.mouseY)) return;
     if (!S.paintEnabled) return;
-    hoverIdx = hitTest(p.mouseX, p.mouseY);
-    if (hoverIdx < 0) return;
+    // Activate as soon as the click lands inside the canvas — it no longer
+    // has to land exactly on a cell. That way a radius brush hovering the
+    // gap between cells still picks up everything inside its circle.
+    H.pushUndoSnapshot();
     isPainting = true;
     const isErase = (p.mouseButton === p.RIGHT);
     lastPaintX = p.mouseX;
@@ -114,10 +129,14 @@ new p5((p) => {
 
   // Touch support (mobile)
   p.touchStarted = () => {
+    // Only paint if touch is inside this canvas — but (as with mouse) it no
+    // longer needs to land exactly on a cell for a radius brush to activate.
+    if (!inCanvasBounds(p.mouseX, p.mouseY)) return true;
+    // The eyedropper works even while painting is toggled off — it only
+    // reads a color, it doesn't touch the artwork.
+    if (trySampleEyedropper(p.mouseX, p.mouseY)) return false;
     if (!S.paintEnabled) return true;
-    // Only paint if touch is inside this canvas
-    hoverIdx = hitTest(p.mouseX, p.mouseY);
-    if (hoverIdx < 0) return true;
+    H.pushUndoSnapshot();
     isPainting = true;
     lastPaintX = p.mouseX;
     lastPaintY = p.mouseY;
@@ -141,12 +160,47 @@ new p5((p) => {
   };
 
 
-  // Paints a brush stamp centered on the given canvas coords.
+  function inCanvasBounds(mx, my) {
+    return mx >= 0 && my >= 0 && mx <= p.width && my <= p.height;
+  }
+
+  // Radius (in px) the current brush size covers around its center point.
+  function brushRadiusPx(size) {
+    return (size - 1) * BUCKET + (TILE_W / 2);
+  }
+
+  // Every paintable index whose center lies within radiusPx of (cx, cy),
+  // found via the spatial hash so only nearby buckets are checked instead
+  // of scanning every cell.
+  function collectWithinRadius(cx, cy, radiusPx) {
+    const out = [];
+    const bucketRadius = Math.ceil(radiusPx / BUCKET);
+    const bx = Math.floor(cx / BUCKET);
+    const by = Math.floor(cy / BUCKET);
+
+    for (let ix = bx - bucketRadius; ix <= bx + bucketRadius; ix++) {
+      for (let iy = by - bucketRadius; iy <= by + bucketRadius; iy++) {
+        const bucket = spatialHash.get(ix + "," + iy);
+        if (!bucket) continue;
+        for (let k = 0; k < bucket.length; k++) {
+          const idx = bucket[k];
+          const v = paintables[idx];
+          const vx = v.x + v.w / 2;
+          const vy = v.y + v.h / 2;
+          const d = Math.sqrt((vx - cx) * (vx - cx) + (vy - cy) * (vy - cy));
+          if (d <= radiusPx) out.push(idx);
+        }
+      }
+    }
+    return out;
+  }
+
+  // Paints a brush stamp centered on the given canvas coords. The brush is
+  // anchored to the actual cursor position (not snapped to whatever cell
+  // happens to be under it), so every cell inside the radius gets painted
+  // even when the cursor itself is hovering a gap between cells.
   function paintBrushAt(mx, my, isErase) {
-    hoverIdx = hitTest(mx, my);
-    if (hoverIdx < 0) return;
-    const v = paintables[hoverIdx];
-    paintBrushAroundPoint(v.x + v.w / 2, v.y + v.h / 2, isErase);
+    paintBrushAroundPoint(mx, my, isErase);
   }
 
   // Interpolates from the last painted point to the new point so fast
@@ -167,11 +221,7 @@ new p5((p) => {
       const t = i / steps;
       const sx = lastPaintX + dx * t;
       const sy = lastPaintY + dy * t;
-      hoverIdx = hitTest(sx, sy);
-      if (hoverIdx >= 0) {
-        const v = paintables[hoverIdx];
-        paintBrushAroundPoint(v.x + v.w / 2, v.y + v.h / 2, isErase);
-      }
+      paintBrushAroundPoint(sx, sy, isErase);
     }
     lastPaintX = mx;
     lastPaintY = my;
@@ -179,8 +229,8 @@ new p5((p) => {
   }
 
   // Paints every paintable cell whose center lies within the brush radius
-  // (Shared.brushSize) of (cx, cy), using the spatial hash so only nearby
-  // buckets are checked instead of scanning every cell.
+  // (Shared.brushSize) of (cx, cy) — the raw cursor/stroke-sample position,
+  // not a cell center.
   function paintBrushAroundPoint(cx, cy, isErase) {
     const size = Math.max(1, Math.min(6, Math.round(S.brushSize || 1)));
     if (size <= 1) {
@@ -188,26 +238,9 @@ new p5((p) => {
       paintIndex(idx, isErase);
       return;
     }
-    const radiusPx = (size - 1) * BUCKET + (TILE_W / 2);
-    const bucketRadius = Math.ceil(radiusPx / BUCKET);
-    const bx = Math.floor(cx / BUCKET);
-    const by = Math.floor(cy / BUCKET);
-
-    for (let ix = bx - bucketRadius; ix <= bx + bucketRadius; ix++) {
-      for (let iy = by - bucketRadius; iy <= by + bucketRadius; iy++) {
-        const key = ix + "," + iy;
-        const bucket = spatialHash.get(key);
-        if (!bucket) continue;
-        for (let k = 0; k < bucket.length; k++) {
-          const idx = bucket[k];
-          const v = paintables[idx];
-          const vx = v.x + v.w / 2;
-          const vy = v.y + v.h / 2;
-          const d = Math.sqrt((vx - cx) * (vx - cx) + (vy - cy) * (vy - cy));
-          if (d <= radiusPx) paintIndex(idx, isErase);
-        }
-      }
-    }
+    const radiusPx = brushRadiusPx(size);
+    const hits = collectWithinRadius(cx, cy, radiusPx);
+    for (let i = 0; i < hits.length; i++) paintIndex(hits[i], isErase);
   }
 
   function paintIndex(idx, isErase) {
@@ -217,6 +250,29 @@ new p5((p) => {
     const cellId = String(v.id);
     if (S.cellIdToSphereNode[cellId] === undefined) return;
     H.setPaintByCellId(cellId, isErase ? null : S.selectedColor);
+  }
+
+  // Reads the current on-screen color of the cell under (mx, my) — its
+  // paint if any, otherwise its default fill — the same value paintIndex()
+  // would overwrite, not a lit/rendered pixel readback.
+  function sampleColorAt(mx, my) {
+    const idx = hitTest(mx, my);
+    if (idx < 0) return null;
+    const v = paintables[idx];
+    if (!v) return null;
+    return S.cellPaint[String(v.id)] || defaultFill(v.kind);
+  }
+
+  // If the eyedropper tool is armed, consumes this click/tap: samples the
+  // color under the cursor into the brush instead of painting, then
+  // disarms itself (one shot per activation). Returns true when it handled
+  // the event (caller should not also start a paint stroke).
+  function trySampleEyedropper(mx, my) {
+    if (!S.eyedropperActive) return false;
+    const c = sampleColorAt(mx, my);
+    if (c) S.selectedColor = c;
+    S.eyedropperActive = false;
+    return true;
   }
 
   function insertAt1Based(arr, pos1, value) {
@@ -460,38 +516,65 @@ new p5((p) => {
     g.pop();
   }
 
-  // Shows the hovered cell outline, and (when brush size > 1) a faint
-  // circle indicating the full area that would be painted.
+  // Shows exactly what a click/tap would do right now: the brush-radius
+  // circle around the actual cursor position, every cell inside that
+  // radius outlined (so it's clear the whole radius is "live", not just
+  // whichever cell the cursor happens to sit on), and a filled highlight
+  // on the cell directly under the cursor, if any.
   function drawBrushHoverPreview() {
-    if (hoverIdx < 0) return;
-    const v = paintables[hoverIdx];
-    if (!v) return;
+    if (!S.paintEnabled) return;
+    const mx = p.mouseX, my = p.mouseY;
+    if (!inCanvasBounds(mx, my)) return;
 
     const size = Math.max(1, Math.min(6, Math.round(S.brushSize || 1)));
-    const cx = v.x + v.w / 2;
-    const cy = v.y + v.h / 2;
 
     if (size > 1) {
-      const radiusPx = (size - 1) * BUCKET + (TILE_W / 2);
+      const radiusPx = brushRadiusPx(size);
       p.noFill();
       p.stroke(255, 160);
       p.strokeWeight(1);
-      p.circle(cx, cy, radiusPx * 2);
+      p.circle(mx, my, radiusPx * 2);
+
+      // Outline every cell that's actually inside the radius, so it's
+      // visually obvious the whole area is selected, not just the center.
+      const hits = collectWithinRadius(mx, my, radiusPx);
+      p.stroke(255, 210);
+      p.strokeWeight(1);
+      for (let i = 0; i < hits.length; i++) {
+        const hv = paintables[hits[i]];
+        p.rect(hv.x - 0.5, hv.y - 0.5, hv.w + 1, hv.h + 1);
+      }
     }
 
+    if (hoverIdx >= 0) {
+      const v = paintables[hoverIdx];
+      p.noFill();
+      p.stroke(255);
+      p.strokeWeight(2);
+      p.rect(v.x - 1, v.y - 1, v.w + 2, v.h + 2);
+
+      const mapped = S.cellIdToSphereNode[String(v.id)];
+      if (mapped !== undefined) {
+        p.noStroke();
+        const c = p.color(S.selectedColor);
+        c.setAlpha(120);
+        p.fill(c);
+        p.rect(v.x + 1, v.y + 1, v.w - 2, v.h - 2);
+      }
+    }
+  }
+
+  // While the eyedropper is armed, highlight only the exact cell that
+  // would be sampled — a dashed-looking ring (no brush-radius circle, no
+  // fill), so it reads clearly as "pick", not "paint".
+  function drawEyedropperHoverPreview() {
+    if (hoverIdx < 0) return;
+    const v = paintables[hoverIdx];
+    if (!v) return;
     p.noFill();
-    p.stroke(255);
+    p.stroke(0, 200, 255);
     p.strokeWeight(2);
-    p.rect(v.x - 1, v.y - 1, v.w + 2, v.h + 2);
-
-    const mapped = S.cellIdToSphereNode[String(v.id)];
-    if (mapped !== undefined) {
-      p.noStroke();
-      const c = p.color(S.selectedColor);
-      c.setAlpha(120);
-      p.fill(c);
-      p.rect(v.x + 1, v.y + 1, v.w - 2, v.h - 2);
-    }
+    p.rect(v.x - 2, v.y - 2, v.w + 4, v.h + 4);
   }
 
   function autoResizeToFit() {

@@ -8,7 +8,7 @@ new p5((p) => {
   const LS_PROFILES = "ornament_profiles_v1";
   const LS_ACTIVE   = "ornament_active_profile_v1";
 
-  let colorInput, paintToggle, clearBtn;
+  let colorInput, paintToggle, clearBtn, undoBtn, eyedropperBtn;
   let sphereColorInput;
 
   let profileNameInput, profileSelect;
@@ -99,6 +99,16 @@ new p5((p) => {
     p.createSpan("Brush:").parent(row1).addClass("label");
     colorInput = p.createInput(S.selectedColor, "color").parent(row1);
     colorInput.input(() => { S.selectedColor = colorInput.value(); });
+    eyedropperBtn = p.createButton("Eyedropper").parent(row1);
+    eyedropperBtn.attribute("title", "Pick the brush color from a painted cell on the grid");
+    eyedropperBtn.mousePressed(() => {
+      S.eyedropperActive = !S.eyedropperActive;
+    });
+
+    // Esc cancels an armed eyedropper without picking anything.
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && S.eyedropperActive) S.eyedropperActive = false;
+    });
 
     // Row: Brush size (paint multiple cells at once for efficiency)
     const rowBrush = p.createDiv().parent(ui).addClass("row");
@@ -143,14 +153,25 @@ new p5((p) => {
     const row3 = p.createDiv().parent(ui).addClass("row");
     p.createSpan("Sphere:").parent(row3).addClass("label");
     sphereColorInput = p.createInput(S.sphereBaseColor || "#1c1c1c", "color").parent(row3);
-    sphereColorInput.input(() => { S.sphereBaseColor = sphereColorInput.value(); });
+    sphereColorInput.input(() => {
+      S.sphereBaseColor = sphereColorInput.value();
+      H.markDirty();
+    });
 
-    // Row: Clear paint
+    // Row: Clear paint / Undo
     const row4 = p.createDiv().parent(ui).addClass("row");
     clearBtn = p.createButton("Clear paint").parent(row4);
     clearBtn.mousePressed(() => {
+      H.pushUndoSnapshot();
       S.nodePaint = Object.create(null);
       S.cellPaint = Object.create(null);
+      H.markDirty();
+    });
+    undoBtn = p.createButton("Undo").parent(row4);
+    undoBtn.attribute("title", "Undo the last paint stroke, clear, or profile load (Ctrl/Cmd+Z)");
+    undoBtn.mousePressed(() => {
+      const undone = H.undo();
+      if (importStatusDiv) importStatusDiv.html(undone ? "Undid last change." : "Nothing to undo.");
     });
 
     // ---- Profiles UI ----
@@ -181,11 +202,13 @@ new p5((p) => {
       const prof = H.buildPaintProfile(name);
       upsertProfile(prof);
       refreshProfileSelect();
+      H.markSaved();
     });
 
     loadProfileBtn.mousePressed(() => {
       const name = (profileNameInput.value() || profileSelect.value() || "").trim();
       if (!name) return;
+      H.pushUndoSnapshot();
       applyProfileByName(name);
       refreshProfileSelect();
     });
@@ -223,6 +246,7 @@ new p5((p) => {
           }
           const prof = JSON.parse(txt);
           if (!prof.name) prof.name = "Imported " + new Date().toISOString().slice(0,19).replace("T"," ");
+          H.pushUndoSnapshot();
           upsertProfile(prof);
           applyProfileByName(prof.name);
           refreshProfileSelect();
@@ -265,6 +289,7 @@ new p5((p) => {
       // also keep it in list
       upsertProfile(prof);
       p.saveJSON(prof, `${name.replace(/[^a-z0-9\-_]+/gi,"_")}.json`);
+      H.markSaved();
     });
 
     importProfileBtn.mousePressed(() => {
@@ -273,7 +298,7 @@ new p5((p) => {
       importFileInput.elt.click();
     });
 
-    const hint = p.createDiv("Grid paints; sphere is preview only. L-drag paint, R-drag erase. Increase brush size to paint several cells per stroke.").parent(ui);
+    const hint = p.createDiv("Grid paints; sphere is preview only. L-drag paint, R-drag erase. Increase brush size to paint several cells per stroke. Eyedropper picks a color from the grid. Ctrl/Cmd+Z (or the Undo button) undoes the last stroke, clear, or profile load.").parent(ui);
 
     // ---- Output ----
     const rowOut = p.createDiv().parent(ui).addClass("row");
@@ -305,6 +330,16 @@ new p5((p) => {
   };
 
   p.draw = () => {
+    // Keep the brush swatch in sync when the color changes from outside
+    // this input (e.g. the eyedropper sampling a cell on the grid).
+    if (colorInput && colorInput.value().toLowerCase() !== String(S.selectedColor).toLowerCase()) {
+      colorInput.value(S.selectedColor);
+    }
+    if (eyedropperBtn) {
+      eyedropperBtn.html(S.eyedropperActive ? "Picking…" : "Eyedropper");
+      eyedropperBtn.style("background", S.eyedropperActive ? "#00aaff" : "");
+    }
+
     p.background(0);
     p.noStroke();
     p.fill(255);
@@ -316,7 +351,6 @@ new p5((p) => {
 
     const painted = Object.keys(S.nodePaint).length;
     p.fill(140);
-   _attach = painted
     p.text(`Painted nodes: ${painted}`, 10, 66);
 
     if (!S.paintEnabled) {
@@ -333,6 +367,22 @@ new p5((p) => {
     } else {
       p.fill(90);
       p.text("Profile: (none)", 10, 110);
+    }
+
+    if (S.isDirty) {
+      p.fill(242, 183, 60);
+      p.text("● Unsaved changes — Save or Export", 10, 132);
+    } else {
+      p.fill(110, 200, 140);
+      p.text("All changes saved", 10, 132);
+    }
+
+    p.fill(S.undoStack.length ? 160 : 90);
+    p.text(`Undo steps available: ${S.undoStack.length}`, 10, 154);
+
+    if (S.eyedropperActive) {
+      p.fill(0, 200, 255);
+      p.text("Eyedropper armed — click a cell to pick its color", 10, 176);
     }
   };
 });
