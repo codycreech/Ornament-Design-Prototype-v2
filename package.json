@@ -1,0 +1,45 @@
+{
+  "name": "ornament-design-prototype-v1",
+  "version": "1.0.0",
+  "description": "Ornament Design Prototype v2",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codycreech/Ornament-Design-Prototype-v2.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/codycreech/Ornament-Design-Prototype-v2/issues"
+  },
+  "homepage": "https://github.com/codycreech/Ornament-Design-Prototype-v2#readme",
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.codycreech.ornamentdesign",
+    "productName": "Ornament Design Prototype",
+    "files": [
+      "index.html",
+      "style.css",
+      "shared.js",
+      "gridSketch.js",
+      "controlsSketch.js",
+      "sphereSketch.js",
+      "mappingData.js",
+      "p5.min.js",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "electron/icon.ico"
+    }
+  }
+}
