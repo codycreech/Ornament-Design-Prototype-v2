@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Ornament Design Prototype v1.2</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <!-- iOS home-screen / standalone app support -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Ornament" />
+  <meta name="theme-color" content="#0b0b0b" />
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+  <!-- Shared state -->
+  <script src="shared.js"></script>
+  <!-- Your mapping data (generated from your JSON export) -->
+  <script src="mappingData.js"></script>
+</head>
+<body>
+  <div id="app">
+    <aside id="left">
+      <div id="controlsSticky">
+        <div id="controlsMount"></div>
+        <div id="controlsUI"></div>
+      </div>
+    </aside>
+
+    <main id="right">
+      <div id="contentRow">
+        <section class="panel" id="gridPanel">
+          <h2>Paintable Grid</h2>
+          <div id="gridMount"></div>
+        </section>
+
+        <section class="panel" id="spherePanel">
+          <h2>Sphere Preview</h2>
+          <div id="sphereMount"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="controlsSketch.js"></script>
+  <script src="gridSketch.js"></script>
+  <script src="sphereSketch.js"></script>
+</body>
+</html>
