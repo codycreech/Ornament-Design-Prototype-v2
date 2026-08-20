@@ -1,6 +1,6 @@
 {
   "name": "ornament-design-prototype",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Ornament Design Prototype",
   "main": "electron/main.js",
   "scripts": {
