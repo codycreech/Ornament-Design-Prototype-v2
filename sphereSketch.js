@@ -159,8 +159,9 @@ new p5((p) => {
     // Keep lon=0 centered (matches the grid pairing intuition)
     p.rotateY(-p.HALF_PI);
 
-    p.ambientLight(90);
-    p.directionalLight(255, 255, 255, 0.3, 0.6, -1);
+    p.ambientLight(150);
+    p.directionalLight(140, 140, 140, 0.3, 0.6, -1);
+    p.directionalLight(60, 60, 60, -0.35, -0.4, 1);
 
     // Sphere surface
     p.noStroke();
