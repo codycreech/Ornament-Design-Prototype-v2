@@ -9,16 +9,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/codycreech/Ornament-Design-Prototype-v2.git"
+    "url": "git+https://github.com/codycreech/Ornament-Design-Prototype.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/codycreech/Ornament-Design-Prototype-v2/issues"
+    "url": "https://github.com/codycreech/Ornament-Design-Prototype/issues"
   },
-  "homepage": "https://github.com/codycreech/Ornament-Design-Prototype-v2#readme",
+  "homepage": "https://github.com/codycreech/Ornament-Design-Prototype#readme",
   "devDependencies": {
     "electron": "^43.4.1",
     "electron-builder": "^26.15.3"
